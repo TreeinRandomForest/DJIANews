@@ -8,7 +8,7 @@ plt.ion()
 from vaderSentiment.vaderSentiment import sentiment
 
 #metrics
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, precision_recall_curve
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, precision_recall_curve, f1_score
 
 #preprocessing
 from nltk.corpus import stopwords
@@ -143,17 +143,19 @@ def prepare_news_data_tfidf(news, max_features = 1000, use_stop_words = False):
 
     return news_transformed
 
-def prepare_combined_dataset(stock_diff, news_score, target_col='binary_target', secondary_target_col='target'):
+def prepare_combined_dataset(stock_diff, news_score, target_col='binary_target', secondary_target_col='target', filter_date=False):
     '''
     Combine features - headlines + target - stock % return
     Pick how many dates to get headlines from and how to combined them
     Input: stock % returns, news vectors
     Output: #rows = #target dates (at a certain frequency), #cols = #features
-    TODO: NEED TO CLEAN UP SO IT USES FREQUENCY
+    TODO: NEED TO CLEAN UP SO IT USES FREQUENCY - HORRIBLE RIGHT NOW
     '''
-    #TODO - join on date
     stock_diff = stock_diff.copy()
     stock_diff.reset_index(inplace=True)
+    if filter_date:
+        stock_diff = stock_diff[stock_diff['Date'] >= '2010-01-01'] #filter
+    
     stock_diff['Date_dt'] = pd.to_datetime(stock_diff['Date'])
     stock_diff['Date_dt_prev'] = stock_diff['Date_dt'].apply(lambda x: x - pd.DateOffset(days=1))
     stock_diff['Date_dt_prev_prev'] = stock_diff['Date_dt'].apply(lambda x: x - pd.DateOffset(days=2))
@@ -164,18 +166,20 @@ def prepare_combined_dataset(stock_diff, news_score, target_col='binary_target',
     news_score = news_score.copy()
     news_score.columns = [i + "_prev" for i in news_score.columns]
     news_score.reset_index(inplace=True)
+    if filter_date:
+        news_score = news_score[news_score['Date'] >= '2010-01-01']
     news_score['Date_dt'] = pd.to_datetime(news_score['Date'])
 
     #prev
     data = pd.merge(stock_diff, news_score, how='left', left_on='Date_dt_prev', right_on='Date_dt')
 
     #prev_prev
-    #news_score.columns = [i + "_prev" if i.find("prev") > -1 else i for i in news_score.columns]
-    #data = pd.merge(data, news_score, how='left', left_on='Date_dt_prev_prev', right_on='Date_dt')
+    news_score.columns = [i + "_prev" if i.find("prev") > -1 else i for i in news_score.columns]
+    data = pd.merge(data, news_score, how='left', left_on='Date_dt_prev_prev', right_on='Date_dt')
 
     #prev_prev_prev
-    #news_score.columns = [i + "_prev" if i.find("prev") > -1 else i for i in news_score.columns]
-    #data = pd.merge(data, news_score, how='left', left_on='Date_dt_prev_prev_prev', right_on='Date_dt')
+    news_score.columns = [i + "_prev" if i.find("prev") > -1 else i for i in news_score.columns]
+    data = pd.merge(data, news_score, how='left', left_on='Date_dt_prev_prev_prev', right_on='Date_dt')
 
     #prev_prev_prev_prev
     #news_score.columns = [i + "_prev" if i.find("prev") > -1 else i for i in news_score.columns]
@@ -275,10 +279,10 @@ def plot_precision_recall(data_train, data_test, score_func, feature_tag):
 
     gs_rf, r_rf = grid_search(data_train, data_test, RandomForestClassifier(), {'n_estimators': [10,30,60,90,150], 'max_depth': [5,10,15,20,30]}, score_func)
     
-    gs_gbm, r_gbm = grid_search(data_train, data_test, GradientBoostingClassifier(), {'n_estimators': [10,30,60,90,150], 'max_depth': [5,10,15,20,30], 'loss': ['deviance', 'exponential']}, score_func)
+    #gs_gbm, r_gbm = grid_search(data_train, data_test, GradientBoostingClassifier(), {'n_estimators': [10,30,60,90,150], 'max_depth': [5,10,15,20,30], 'loss': ['deviance', 'exponential']}, score_func)
     
-    r = [r_logreg, r_rf, r_gbm]
-    gs = [gs_logreg, gs_rf, gs_gbm]
+    r = [r_logreg, r_rf]#, r_gbm]
+    gs = [gs_logreg, gs_rf]#, gs_gbm]
 
     plt.figure()
     for result in r:
